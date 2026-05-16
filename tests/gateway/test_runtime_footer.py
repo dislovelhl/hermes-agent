@@ -8,6 +8,7 @@ import os
 import pytest
 
 from gateway.runtime_footer import (
+    _format_tps,
     _home_relative_cwd,
     _model_short,
     build_footer_line,
@@ -403,3 +404,21 @@ class TestTpsField:
         assert "gpt-5.4" in out
         assert "25%" in out
         assert "t/s" not in out
+
+    # -- boundary / edge cases for _format_tps directly ---------------------
+
+    def test_tps_boundary_exactly_min_elapsed_is_accepted(self):
+        # elapsed_ms == _MIN_ELAPSED_MS (50ms) is the floor and should render.
+        out = _format_tps(100, 50.0)  # 100 / 0.05s = 2000 t/s
+        assert out == "2000t/s"
+
+    def test_tps_boundary_just_below_min_elapsed_is_skipped(self):
+        assert _format_tps(100, 49.9) == ""
+
+    def test_tps_boundary_exactly_100tps_renders_as_integer(self):
+        # 100 t/s sits exactly on the decimal/integer boundary — must be "100t/s".
+        out = _format_tps(100, 1000.0)  # 100 tokens / 1 s = 100.0 t/s
+        assert out == "100t/s"
+
+    def test_tps_skipped_when_response_tokens_negative(self):
+        assert _format_tps(-1, 2000.0) == ""

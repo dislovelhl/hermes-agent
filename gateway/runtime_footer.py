@@ -9,7 +9,7 @@ Config (``~/.hermes/config.yaml``)::
     display:
       runtime_footer:
         enabled: true                       # off by default
-        fields: [model, context_pct, cwd]   # order shown; drop any to hide
+        fields: [model, context_pct, cwd, tps]  # order shown; drop any to hide
 
 Per-platform overrides live under ``display.platforms.<platform>.runtime_footer``.
 Users can toggle the global setting with ``/footer on|off`` from both the CLI
@@ -26,11 +26,11 @@ piecemeal, the footer is sent as a separate trailing message via
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Any, Iterable, Optional
 
 _DEFAULT_FIELDS: tuple[str, ...] = ("model", "context_pct", "cwd")
 _SEP = " · "
+_MIN_ELAPSED_MS: float = 50.0
 
 
 def _home_relative_cwd(cwd: str) -> str:
@@ -92,15 +92,13 @@ def resolve_footer_config(
 def _format_tps(response_tokens: Optional[int], elapsed_ms: Optional[float]) -> str:
     """Render a ``tokens-per-second`` value as ``"NNt/s"`` or return ``""``.
 
-    Skipped silently when either input is missing or the elapsed window is too
-    short to give a meaningful rate (denominator approaches zero → wild
-    numbers like "12345t/s" on a 1ms async loop tick).  ``min_elapsed_ms``
-    floors at 50ms which corresponds to ~20 sample points / second — fine
-    granularity for the user-facing rate without divide-by-tiny noise.
+    Skipped silently when either input is missing or the elapsed window is
+    shorter than ``_MIN_ELAPSED_MS`` — a degenerate denominator produces wild
+    numbers like "12345t/s" on a single async-loop tick.
     """
     if not response_tokens or response_tokens <= 0:
         return ""
-    if elapsed_ms is None or elapsed_ms < 50:
+    if elapsed_ms is None or elapsed_ms < _MIN_ELAPSED_MS:
         return ""
     tps = response_tokens / (elapsed_ms / 1000.0)
     if tps >= 100:
